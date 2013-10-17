@@ -73,11 +73,21 @@
 			}, o);
 
 			function fixTouch(e) {
-				if (e.originalEvent.touches) {
-					e.pageX = e.originalEvent.touches[0].pageX;
-					e.pageY = e.originalEvent.touches[0].pageY;
-					e.which = 1;
+				var touch, s;
+				s = e.originalEvent.touches;
+				if (s && s.length) {
+					touch = s[0];
+				} else {
+					s = e.originalEvent.changedTouches;
+					if (s && s.length) {
+						touch = s[0];
+					} else {
+						return;
+					}
 				}
+				e.pageX = touch.pageX;
+				e.pageY = touch.pageY;
+				e.which = 1;
 			}
 
 			this.on('mousedown.moveable touchstart.movable', o.items, null, function(eDown) {
@@ -129,11 +139,11 @@
 					});
 				});
 
-				$(document).on('mouseup.moveable touchend.movable', function(eUp) {
+				$(document).on('mouseup.moveable touchend.movable touchcancel.movable touchleave.movable', function(eUp) {
 					fixTouch(eUp);
 
 					$(document).off('mousemove.moveable touchmove.movable');
-					$(document).off('mouseup.moveable touchend.movable');
+					$(document).off('mouseup.moveable touchend.movable touchcancel.movable touchleave.movable');
 
 					if ( ! dragged) {
 						return;
@@ -154,7 +164,6 @@
 						$fake.remove();
 					}
 				});
-				return false;
 			});
 		},
 
