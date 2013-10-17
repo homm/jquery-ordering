@@ -3,6 +3,7 @@
 	function nearestFinder (targets) {
 		this.targets = targets;
 		this.last = null;
+		this.update();
 	}
 	nearestFinder.prototype = {
 		update: function() {
@@ -42,13 +43,13 @@
 				}
 			}
 
-			return $(nearest);
+			return nearest;
 		},
 
 		findNotLast: function(x, y) {
 			var nearest = this.find(x, y);
 
-			if (this.last && nearest && this.last[0] == nearest[0]) {
+			if (this.last && nearest && this.last == nearest) {
 				return null;
 			}
 
@@ -66,7 +67,9 @@
 				zIndex: 1000,
 				start: $.noop,
 				move: $.noop,
-				finish: $.noop
+				finish: $.noop,
+				items: null,
+				keepFake: false
 			}, o);
 
 			function fixTouch(e) {
@@ -77,8 +80,7 @@
 				}
 			}
 
-			this.off('mousedown.moveable touchstart.movable');
-			this.on('mousedown.moveable touchstart.movable', function(eDown) {
+			this.on('mousedown.moveable touchstart.movable', o.items, null, function(eDown) {
 				fixTouch(eDown);
 
 				if ( ! o.anyButton && eDown.which != 1) {
@@ -87,7 +89,7 @@
 				eDown.preventDefault();
 
 				var dragged = false;
-				var $dragged = $(eDown.currentTarget);
+				var $dragged = $(this);
 				var $fake = false;
 				var originalPos = $dragged.position();  // offset parent
 
@@ -97,21 +99,17 @@
 				$(document).on('mousemove.moveable touchmove.movable', function(eMove) {
 					fixTouch(eMove);
 
-					if ( ! dragged) {
-						var deltaX = Math.abs(eMove.pageX - eDown.pageX);
-						var deltaY = Math.abs(eMove.pageY - eDown.pageY);
-						if (deltaX > o.distance || deltaY > o.distance)) {
-							dragged = true;
-							$fake = $dragged.clone()
-								.css({position: 'absolute', zIndex: o.zIndex,
-								      width: $dragged.width()})
-								.appendTo($dragged.offsetParent());
-							o.start({
-								event: eMove,
-								dragged: $dragged,
-								fake: $fake
-							});
-						}
+					if ( ! dragged && (Math.abs(eMove.pageX - eDown.pageX) > o.distance || Math.abs(eMove.pageY - eDown.pageY) > o.distance)) {
+						dragged = true;
+						$fake = $dragged.clone()
+							.css({position: 'absolute', zIndex: o.zIndex,
+							      width: $dragged.width()})
+							.appendTo($dragged.offsetParent());
+						o.start({
+							event: eMove,
+							dragged: $dragged,
+							fake: $fake
+						});
 					}
 
 					if ( ! dragged) {
@@ -144,19 +142,15 @@
 
 					var dx = eUp.pageX - eDown.pageX;
 					var dy = eUp.pageY - eDown.pageY;
-					var keepFake = false;
 					dragged = false;
 					o.finish({
 						event: eUp,
 						dragged: $dragged,
 						fake: $fake,
 						dx: dx,
-						dy: dy,
-						keepFake: function() {
-							keepFake = true;
-						}
+						dy: dy
 					});
-					if ( ! keepFake) {
+					if ( ! o.keepFake) {
 						$fake.remove();
 					}
 				});
@@ -165,23 +159,23 @@
 		},
 
 		sortable: function(o) {
-			var oMovable = $.extend({}, o);
+			var oMovable = $.extend({
+				items: '>*'
+			}, o);
 			var o = $.extend({
-				checkBounds:
-					function (info) {
-						return true;
-					},
+				checkBounds: function () {return true;},
 				start: $.noop,
 				attach: $.noop,
 				move: $.noop,
 				finish: $.noop
 			}, o);
-			var finder = new nearestFinder(this);
+			var finder;
 			var initialNext = false;
+			var parent = this;
 
 			oMovable.start = function(info) {
 				o.start(info);
-				finder.update();
+				finder = new nearestFinder(parent.find(oMovable.items));
 				initialNext = info.dragged.next();
 			};
 
@@ -190,20 +184,21 @@
 
 				if (o.checkBounds(info)) {
 					var offset = info.fake.offset();
-					var $nearest = info.nearest = finder.findNotLast(
+					var nearest = finder.findNotLast(
 						offset.left + info.dragged.width() / 2, offset.top);
+					info.nearest = $(nearest);
 
-					if ($nearest && $nearest[0] != info.dragged[0]) {
-						if (info.dragged.nextAll().filter($nearest[0]).length > 0) {
-							info.dragged.insertAfter($nearest);
+					if (nearest && nearest != info.dragged[0]) {
+						if (info.dragged.nextAll().filter(nearest).length > 0) {
+							info.dragged.insertAfter(nearest);
 						} else {
-							info.dragged.insertBefore($nearest);
+							info.dragged.insertBefore(nearest);
 						}
 						o.attach(info);
+						finder.last = null;
 						finder.update();
 					}
 				} else if (finder.last !== null) {
-					// Restore position if we leave the bound.
 					finder.last = null;
 					if (initialNext.length) {
 						info.dragged.insertBefore(initialNext);
@@ -217,14 +212,15 @@
 				o.move(info);
 			};
 
-			finish: function(info) {
+			oMovable.finish = function(info) {
 				var offset = info.fake.offset();
 				info.nearest = null;
 				if (o.checkBounds(info)) {
-					info.nearest = finder.find(
-						offset.left + info.dragged.width() / 2, offset.top);
+					info.nearest = $(finder.find(
+						offset.left + info.dragged.width() / 2, offset.top));
 				}
 				o.finish(info);
+				finder = null;
 			};
 
 			return this.moveable(oMovable);
